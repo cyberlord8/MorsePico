@@ -1,8 +1,8 @@
-# MorseUNO
+# MorsePico
 Convert typed text to Morse code
 /*
 
-MorseUNO
+MorsePico
 
 Morse Code Sketch - Copyright Timothy Millea 2022 - Released under Creative Commons Attribution 4.0 International License
 
