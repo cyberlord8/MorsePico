@@ -19,15 +19,17 @@ Adding a relay to pin 12 and connecting the relay contacts to a transmitter key 
 
 //define variables
 // int morseLED = 13;  //GIO LED pin
-int morseLED = LED_BUILTIN;  //onboard LED
-int morseSND = 12;  //pin for speaker
-int WPM = 25;       //default 13 words per minute
-int multiplier = 1200 / WPM;
-int delayInterSpace = 1 * multiplier;
-int delayDIT = 1 * multiplier;
-int delayDAH = 3 * multiplier;
-int delayCharSpacing = 3 * multiplier;
-int delayWordSpacing = 7 * multiplier;
+int morseLED = LED_BUILTIN;  //onboard Pico LED
+int morseSND = 12;           //pin for speaker
+//variables to convert WPM to millisecond timing
+int WPM = 25;                //set default words per minute
+int multiplier = 1200 / WPM; //multiplier for morse symbol spacing (PARIS method)
+int interspaceLength = 1 * multiplier; // spacing for inter morse symbol spacing
+int DITLength = 1 * multiplier; //length of a DIT
+int DAHLength = 3 * multiplier; //length of a DAH
+int charSpacingLength = 3 * multiplier; //spacing between morse symbol groups (characters)
+int wordSpacingLength = 7 * multiplier; //spacing between morse symbol groups (words)
+
 bool stringComplete = false;
 String inputString;  // a string to hold incoming data
 
@@ -37,6 +39,10 @@ void setup() {
   pinMode(morseLED, OUTPUT);  //onboard LED
   Serial.begin(9600);
 
+  while (!Serial.available()) {
+    delay(50);
+  } //not sure this is working
+
   Serial.println();
   Serial.println();
   Serial.println("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
@@ -44,46 +50,47 @@ void setup() {
   Serial.println("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
   Serial.println("~ Command mode");
   Serial.println("Current commands:");
-  Serial.println("~WPM - lists current or sets new WPM speed (~WPM or ~WPM 25)");
+  Serial.println("~WPM - lists current or sets new WPM speed (~WPM or ~WPM 13)");
   Serial.println("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
   Serial.print("Current WPM: ");
   Serial.println(WPM);
-  flashSentence("MorsePICO");
+  flashSentence("MorsePICO");// send "MorsePico" in Morse code
   Serial.println();
   Serial.println("Ready!");
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-  if (stringComplete) {
+  if (stringComplete) { //if serial read has completed
     Serial.println("");
     Serial.println(inputString);
-    if (inputString.startsWith("~")) {
-      //this is a command
+    if (inputString.startsWith("~")) { //check for command character
       inputString.toUpperCase();
-      inputString.remove(0, 1);
+      inputString.remove(0, 1); //remove the '~'
       if (inputString.startsWith("WPM")) {
-        inputString.remove(0, 4);
-        inputString.trim();
-        if (inputString.toInt() == 0) {
+        inputString.remove(0, 4); //remove "WPM" and the space
+        inputString.trim(); //trim any white space
+        if (inputString.toInt() == 0) { //if no value was supplied
           Serial.print("Current WPM: ");
-          Serial.println(WPM);
+          Serial.println(WPM); //print the current WPM
           return;
         }
-        WPM = inputString.toInt();
+        WPM = inputString.toInt(); // set WPM to value supplied
         Serial.print("Set WPM to: ");
         Serial.println(WPM);
+        //calculate the spacing variables based on supplied WPM
         multiplier = 1200 / WPM;
-        delayInterSpace = 1 * multiplier;
-        delayDIT = 1 * multiplier;
-        delayDAH = 3 * multiplier;
-        delayCharSpacing = 3 * multiplier;
-        delayWordSpacing = 7 * multiplier;
-      }
-    } else {
+        interspaceLength = 1 * multiplier;
+        DITLength = 1 * multiplier;
+        DAHLength = 3 * multiplier;
+        charSpacingLength = 3 * multiplier;
+        wordSpacingLength = 7 * multiplier;
+      }// if WPM command
+    } else { // else not a command it's stuff we need to send as morse code
       flashSentence(inputString);
       Serial.println("");
-    }
+    }//else it's stuff we need to send as Morse code
+    //reset variables
     inputString = "";
     stringComplete = false;
   }  //if read serial console complete
@@ -92,14 +99,14 @@ void loop() {
 void flashLetter(char letter) {
   //this isn't elegant but it gets the job done
   Serial.print(letter);
-  if (letter == 'A') {
-    flashDIT();
-    flashDAH();
-  } else if (letter == 'B') {
-    flashDAH();
-    flashDIT();
-    flashDIT();
-    flashDIT();
+  if (letter == 'A') { //if character is 'A' (morse symbols ._ )
+    flashDIT(); //send DIT
+    flashDAH(); //send DAH
+  } else if (letter == 'B') { //if character is 'B' (morse symbols _... ) etc...
+    flashDAH(); //send DAH etc...
+    flashDIT(); //send DIT etc...
+    flashDIT(); //send DIT etc...
+    flashDIT(); //send DIT etc...
   } else if (letter == 'C') {
     flashDAH();
     flashDIT();
@@ -345,41 +352,40 @@ void flashLetter(char letter) {
     flashDAH();
     flashDIT();
   }
-
-
 }  //flashLetter()
 
 void flashWord(String word) {
   //break word into chars
-  for (int i = 0; i < word.length(); i++) {
-    flashLetter(word.charAt(i));
-    delay(delayWordSpacing - delayCharSpacing);
+  for (int i = 0; i < word.length(); i++) { //for each character in the word...
+    flashLetter(word.charAt(i)); //send morse symbols for character
+    delay(wordSpacingLength - charSpacingLength); //add inter word spacing
   }  //for each character in word
 }  //flashWord()
 
 void flashSentence(String text) {
-  int splitCount = countSplitCharacters(text, ' ');
-  String wordArray[splitCount + 1];
-  int index1 = 0;
-  int index2 = 0;
+  int splitCount = countSplitCharacters(text, ' '); //get count of words in sentence
+  String wordArray[splitCount + 1]; //make an array to store words
+  int startIndex = 0;
+  int endIndex = 0;
   for (int i = 0; i < splitCount + 1; i++) {
-    //find the start and end index of the words by finding the space character
-    if (index1 > 0) {
-      index1 = text.indexOf(' ', index2);
+    //find the start and end index of the words by finding the space characters
+    if (startIndex > 0) { //if we've set the startIndex before
+      startIndex = text.indexOf(' ', endIndex); //find the new startIndex
     }
-    index2 = text.indexOf(' ', index1 + 1);
-    if (index2 < 0) {
-      index2 = text.length();
+    endIndex = text.indexOf(' ', startIndex + 1); //get the endIndex
+    if (endIndex < 0) { //if endIndex was not found
+      endIndex = text.length(); //set endIndex to end of text
     }
-    //parse the word from the string
-    String word = text.substring(index1++, index2);
+    //parse the word from the string using indexes, don't forget to increment the startIndex
+    String word = text.substring(startIndex++, endIndex); //get the word between the indices and increment the startIndex
     word.toUpperCase();   //convert to uppercase
     wordArray[i] = word;  //add word to array
-  }                       //for each word in sentance
+  } //for each word in sentance
+  //now send the words in the array
   for (int i = 0; i < splitCount + 1; i++) {
     flashWord(wordArray[i]);
   }  //for each word in array
-  delay(delayWordSpacing);
+  delay(wordSpacingLength); //add inter word spacing
 }  //flashSentence()
 
 void serialEvent() {
@@ -387,14 +393,15 @@ void serialEvent() {
     char inChar = (char)Serial.read();
     if (inChar == '\n') {
       stringComplete = true;
-    }  //if we have a newline then we're done reading serial for now
+    } //if we have a newline then we're done reading serial for now
     if (stringComplete == false) {
       inputString += inChar;
-    }  //if no newline then append the char to the string
-  }    //while stuff ready to read from serial console
+    } //if no newline then append the char to the string
+  } //while stuff ready to read from serial console
 }  //serialEvent()
 
 int countSplitCharacters(String text, char splitChar) {
+  //why doesn't String() have a count() method!!??
   int returnValue = 0;
   int index = 0;
   while (index > -1) {
@@ -405,19 +412,19 @@ int countSplitCharacters(String text, char splitChar) {
 }  //countSplitCharacters
 
 void flashDIT() {
-  digitalWrite(morseSND, HIGH);
-  digitalWrite(morseLED, HIGH);
-  delay(delayDIT);
-  digitalWrite(morseSND, LOW);
-  digitalWrite(morseLED, LOW);
-  delay(delayInterSpace);
+  digitalWrite(morseSND, HIGH); //set sound high
+  digitalWrite(morseLED, HIGH); //set LED high
+  delay(DITLength); //morse DIT symbol length 
+  digitalWrite(morseSND, LOW); //set sound low
+  digitalWrite(morseLED, LOW); //set LED low
+  delay(interspaceLength); //spacing between morse symbols
 }  //flashDIT()
 
 void flashDAH() {
-  digitalWrite(morseSND, HIGH);
-  digitalWrite(morseLED, HIGH);
-  delay(delayDAH);
-  digitalWrite(morseSND, LOW);
-  digitalWrite(morseLED, LOW);
-  delay(delayInterSpace);
+  digitalWrite(morseSND, HIGH); //set sound high
+  digitalWrite(morseLED, HIGH); //set LED high
+  delay(DAHLength); //morse DAH symbol length 
+  digitalWrite(morseSND, LOW); //set sound low
+  digitalWrite(morseLED, LOW); //set LED low
+  delay(interspaceLength); //spacing between morse symbols
 }  //flashDAH()
